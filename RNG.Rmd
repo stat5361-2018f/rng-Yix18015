@@ -1,0 +1,172 @@
+---
+title: "RNG Project"
+author: "Yiyi Xu"
+date: "10/19/2018"
+output: html_document
+---
+
+
+## Find the Value of C & Identify weights of component
+
+$$\int_0^{\infty}(2x^{\theta-1} +x^{\theta-\frac{1}{2}})e^{-x}dx = 2\int_0^{\infty}x^{\theta-1}e^{-x}dx  + \int_0^{\infty}x^{\theta-\frac{1}{2}}e^{-x}dx=2\Gamma(\theta)+\Gamma(\theta+\frac{1}{2})  $$
+--> $$C=\frac{1}{2\Gamma(\theta)+\Gamma(\theta+\frac{1}{2})}$$
+--> $$g(x)=\frac{1}{2\Gamma(\theta)+\Gamma(\theta+\frac{1}{2})}(2x^{\theta-1}+x^{\theta-\frac{1}{2}})e^{-x} =\frac{2\Gamma(\theta)}{2\Gamma(\theta)+\Gamma(\theta+\frac{1}{2})}\frac{1}{\Gamma(\theta)}x^{\theta-1}e^{-x} + \frac{\Gamma(\theta+\frac{1}{2})}{2\Gamma(\theta)+\Gamma(\theta+\frac{1}{2})}\frac{1}{\Gamma(\theta+\frac{1}{2})}x^{\theta-\frac{1}{2}}e^{-x}  $$
+
+## Design a Procedure
+
+```{r}
+
+h1 <- function(n, theta){
+  U <- runif(1)
+  X <- rep(0,n)
+  weight <- 2*gamma(2) / (2*gamma(2) + gamma(2.5))
+  for(i in 1:n){
+    if(U < weight){
+      X[i] <- rgamma(1,theta,1)
+    }else{
+      X[i] <- rgamma(1,theta+0.5,1)
+    }
+  }
+  X
+}
+theta <- 2
+sample <- h1(10000, 2)
+C <- 1/(2*gamma(2) + gamma(2.5))
+plot(density(sample),ylim = c(0,0.5),col="red", main="Density Estimate and the true density ")
+curve((2*x^(theta-1)+x^(theta-1/2))*exp(-x)*C, from=0, to=10, add=TRUE, col="skyblue")
+
+``` 
+
+## Use rejection sample 
+In order to find $\alpha$ such that $$q(x)=\sqrt{4+x}x^{\theta-1}e^{-x}<= \alpha g(x)$$
+--> 
+$$\alpha = \sup_{x>0}\frac{q(x)}{g(x)} = \frac{1}{C}$$
+$$q(x)=\frac{1}{C} g(x)= (2x^{\theta-1}+x^{\theta-0.5})e^{-x}$$
+Generate T with density m.
+Generate U, uniform on [0,1] and independent of T. If M(T)*U ≤ ƒ(T), then let X = T (accept T). Otherwise, go to Step 1 (Reject T).
+```{r}
+h2 <- function(n, theta){
+  X <- rep(0,n)
+  i <- 1
+  while(i <= n){
+    U <- runif(1)
+    x <- h1(1, theta)
+    if(U <= sqrt(4+x)/(2+sqrt(x))){
+      X[i] <- x
+      i <- i+1
+    }
+  }
+  X
+}
+
+theta <- 2
+samplea <- h2(10000, 2)
+C <- 1/(2*gamma(2) + gamma(2.5))
+plot(density(samplea),ylim = c(0,0.4), xlim = c(0,10), col="red", main="Density Estimate and the true density ")
+curve((2*x^(theta-1)+x^(theta-1/2))*exp(-x)*C, from=0, to=10, add=TRUE, col="skyblue")
+
+```
+
+## Design a procedure to F
+
+$$q(x)=\frac{x^{\theta-1}}{1+x^2}+\sqrt{2+x^2} (1-x)^{\beta-1}\leq x^{\theta-1} +2 (1-x)^{\beta-1}$$
+choose $$\lambda= \frac{\theta}{\theta+2\beta}$$
+$$g(x)=\lambda Beta(\theta,1)+(1-\lambda) Beta(1,\beta)= \frac{\lambda}{\theta}x^{\theta-1}+\frac{1-\lambda}{\beta}(1-x)$$
+so, when $$\alpha=\theta+2\beta$$, it satisfy $$q(x)\leq\alpha g(x)$$
+
+```{r}
+n <- 10000                
+U <- runif(n)
+X <- rep(0,n)
+
+
+s1 <- function(n, theta, beta){
+  lambda <- theta/(theta+2*beta)
+  g <- rep(0, n)
+  for(i in 1:n){
+    u <- runif(1)
+    if(u < lambda){
+      g[i] <- rbeta(1, theta, 1)
+    }else{
+      g[i] <- rbeta(1, 1, beta)
+    }
+  }
+  g
+}
+
+
+s2 <- function(n, theta, beta){
+  s <- rep(0, n)
+  lambda <- theta/(theta + 2*beta)
+  alpha <- theta+2*beta
+  i <- 1
+  while(i <= n){
+    u <- runif(1)
+    x <- s1(1, theta, beta)
+    if(u <= (x^(theta-1)/(1+x^2)+sqrt(2+x^2)*(1-x)^(beta-1))/
+       (alpha*(lambda*dbeta(x, theta, 1)+(1-lambda)*dbeta(x, 1, beta)))){
+      s[i] <- x
+      i <- i + 1
+    }
+  }
+  s
+}
+
+#theta = 2, beta = 2
+theta <- 2
+beta <- 2
+c <- integrate(function(x) {x^(theta-1)/(1+x^2)+sqrt(2+x^2)*(1-x)^(beta-1)}, 0, 1)$value
+sampleb <- s2(10000, 2, 2)
+plot(density(sampleb),ylim=c(0,1.5),col="red", main="Density Estimate and the true density ")
+curve(x^(theta-1)/(1+x^2)+sqrt(2+x^2)*(1-x)^(beta-1)/c, from=0, to=1, add=TRUE, col="skyblue")
+```
+## 
+Assume 
+$$q_1(x)=\frac{x^{\theta-1}}{1+x^2}\leq x^{\theta-1} =\theta Beta(\theta, 1)=\alpha_1g_1(x)$$
+$$q_2(x)= \sqrt{2+x^2}(1-x)^{\beta-1}\leq2(1-x)^{\beta-1}=2\beta Beta(1,\beta)=\alpha_2g_2(x)$$
+$$\alpha_1=\theta$$
+$$\alpha_2=2\beta$$
+
+
+```{r}
+s3 <- function(n, theta, beta){
+  s <- rep(0,n)
+  lambda <- theta/(theta+2*beta)
+  i <- 1
+  while (i <= n) {
+    u <- runif(1)
+    if(u < lambda){
+      x <- rbeta(1, theta, 1)
+      u1 <- runif(1)
+      if(u1 <= 1/(1+x^2)){
+        s[i] <- x
+        i <- i+1
+      }
+    }else{
+      x <- rbeta(1, 1, beta)
+      u2 <- runif(1)
+      if(u2 <= sqrt(2+x^2)/2){
+        s[i] <- x
+        i <- i +1
+      }
+    }
+  }
+  s
+}
+#theta=2, beta=2
+samplec <- s3(10000, 2, 2)
+c <- integrate(function(x) {x^(theta-1)/(1+x^2)+sqrt(2+x^2)*(1-x)^(beta-1)}, 0, 1)$value
+plot(density(samplec),ylim=c(0,1.5),col="red", main="Density Estimate and the true density ")
+curve(x^(theta-1)/(1+x^2)+sqrt(2+x^2)*(1-x)^(beta-1)/c, from=0, to=1, add=TRUE, col="skyblue")
+```
+
+
+
+
+
+
+
+
+
+
+
